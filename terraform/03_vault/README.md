@@ -1,8 +1,10 @@
 # Stage 3 — Vault AWS authentication
 
-This stage enables Vault AWS IAM auth and creates separate Vault roles for
-workers and the Lambda token broker. It requires an administrator Vault token;
-keep it in the `VAULT_TOKEN` environment variable, never in a tfvars file.
+This stage enables Vault AWS IAM auth, creates separate Vault roles for
+workers and the Lambda token broker, and configures the Vault SSH certificate
+authority used for Boundary credential injection. It requires an administrator
+Vault token; keep it in the `VAULT_TOKEN` environment variable, never in a
+tfvars file.
 
 ## Prerequisites
 
@@ -51,6 +53,65 @@ terraform init
 terraform plan
 terraform apply
 ```
+
+The apply creates the `boundary-ssh/` SSH secrets engine, its CA signing key,
+the `boundary-ubuntu` signing role, and the limited
+`boundary-credential-store` policy. Export the public CA key and install it on
+the Stage 1 target before creating the Boundary credential library:
+
+```bash
+terraform output -raw vault_ssh_ca_public_key > vault-ssh-ca.pub
+
+scp -i ~/.ssh/boundary-lab vault-ssh-ca.pub \
+  ubuntu@"<TARGET_PUBLIC_IP>":/tmp/vault-ssh-ca.pub
+
+scp -i ~/.ssh/boundary-lab scripts/install-target-ssh-ca.sh \
+  ubuntu@"<TARGET_PUBLIC_IP>":/tmp/install-target-ssh-ca.sh
+
+ssh -i ~/.ssh/boundary-lab ubuntu@"<TARGET_PUBLIC_IP>"
+sudo /tmp/install-target-ssh-ca.sh /tmp/vault-ssh-ca.pub
+```
+
+Stage 3 does not create the HCP Boundary credential store because its Vault
+token must be entered through a protected process and must not be placed in
+Terraform configuration or local state. The next implementation stage will
+use this policy to create a periodic token, then configure the Boundary Vault
+credential store, SSH certificate library, and SSH target association.
+
+## Configure HCP Boundary credential injection
+
+Use the supplied scripts for actions that require a Vault token. They keep the
+token out of Terraform state and source control.
+
+The target identified by `BOUNDARY_TARGET_ID` must be an **SSH target**
+(`tssh_...`), not a TCP target (`ttcp_...`). SSH credential injection is not
+supported for TCP targets.
+
+```bash
+chmod +x scripts/*.sh
+./scripts/create-boundary-credential-store-token.sh
+# Copy the displayed token into the current terminal only:
+export BOUNDARY_VAULT_CREDENTIAL_STORE_TOKEN="<periodic-token>"
+
+export BOUNDARY_PROJECT_ID="p_xxxxxxxxx"
+export BOUNDARY_TARGET_ID="tssh_xxxxxxxxx"
+export VAULT_SSH_SIGNING_PATH="$(terraform output -raw vault_ssh_signing_path)"
+export SSH_TARGET_USERNAME="ubuntu"
+
+./scripts/configure-boundary-ssh-injection.sh
+```
+
+For this public-Vault POC, leave `BOUNDARY_WORKER_FILTER` unset. When you move
+to a private Vault endpoint, set it to a filter matching a worker that can
+reach Vault, for example:
+
+```bash
+export BOUNDARY_WORKER_FILTER='"vault" in "/tags/type"'
+```
+
+After the script succeeds, test the existing SSH target with `boundary connect
+ssh`. Do not add `-i ~/.ssh/boundary-lab`; a successful connection proves that
+Boundary injected a short-lived Vault SSH certificate.
 
 Before Stage 5, manually store the Boundary API credential used only by the
 token broker at `secret/boundary/token-broker`. Do not grant this credential to

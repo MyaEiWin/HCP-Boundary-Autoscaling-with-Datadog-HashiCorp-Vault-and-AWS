@@ -1,0 +1,7 @@
+aws_region        = "us-east-1"
+asg_name          = "boundary-autoscaling-lab-workers"
+vault_addr        = "https://YOUR-VAULT-PUBLIC-ENDPOINT:8200"
+vault_namespace   = "admin"
+boundary_addr     = "https://YOUR-HCP-BOUNDARY-ADDRESS"
+boundary_scope_id = "global"
+datadog_site      = "datadoghq.com"

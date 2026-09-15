@@ -1,3 +1,10 @@
 worker_role_arn       = "arn:aws:iam::<ACCOUNT_ID>:role/boundary-autoscaling-lab-worker"
 token_broker_role_arn = "arn:aws:iam::<ACCOUNT_ID>:role/boundary-autoscaling-lab-token-broker"
 
+# Optional SSH certificate injection settings. These defaults are suitable for
+# the Ubuntu target created in Stage 1.
+ssh_mount_path           = "boundary-ssh"
+ssh_signing_role_name    = "boundary-ubuntu"
+ssh_target_username      = "ubuntu"
+ssh_certificate_ttl      = "30m"
+ssh_certificate_max_ttl  = "1h"

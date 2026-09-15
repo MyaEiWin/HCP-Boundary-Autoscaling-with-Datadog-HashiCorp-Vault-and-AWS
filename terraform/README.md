@@ -12,7 +12,8 @@ individually.
 | 3 | `03_vault` | Vault AWS auth method, worker policy, and role. | Add after worker IAM role exists. |
 | 4 | `04_worker_asg` | Private worker networking, launch template, and ASG. | Requires the selected Boundary registration design. |
 | 5 | `05_scaling` | Scaling policies and termination lifecycle hook. | Add after one ASG worker is healthy. |
-| 6 | `06_datadog` | Optional Datadog monitor automation. | Add after the session metric is proven. |
+| 6 | `06_automation` | Session metric, worker registration, and lifecycle-cleanup Lambda automation. | Add after Stage 05. |
+| 7 | `07_datadog` | Datadog monitors, protected webhook receiver, and ASG scale actions. | Add after Stage 06 metric testing. |
 
 ## Run a stage
 

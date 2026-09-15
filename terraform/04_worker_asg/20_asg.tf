@@ -14,6 +14,7 @@ resource "aws_launch_template" "worker" {
   user_data = base64encode(templatefile("${path.module}/scripts/worker-bootstrap.sh.tftpl", {
     region              = var.aws_region
     vault_addr          = var.vault_addr
+    vault_namespace     = var.vault_namespace
     vault_aws_role      = var.vault_aws_role
     boundary_cluster_id = var.boundary_cluster_id
   }))

@@ -1,4 +1,0 @@
-# Replace with configured Datadog webhook notification handles.
-scale_out_notification = "@webhook-boundary-scale-out"
-scale_in_notification  = "@webhook-boundary-scale-in"
-

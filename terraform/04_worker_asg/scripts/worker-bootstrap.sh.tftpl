@@ -3,6 +3,7 @@ set -euo pipefail
 
 export AWS_REGION="${region}"
 export VAULT_ADDR="${vault_addr}"
+export VAULT_NAMESPACE="${vault_namespace}"
 
 # POC approach: install tools at boot. A later production design can pass a
 # prebuilt AMI through worker_ami_id and skip this startup installation.

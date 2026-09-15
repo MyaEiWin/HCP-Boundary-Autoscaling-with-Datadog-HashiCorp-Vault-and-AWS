@@ -5,3 +5,6 @@ terraform/**/*.tfstate.*
 terraform/**/*.tfplan
 terraform/**/terraform.tfvars
 terraform/**/crash.log
+terraform/**/*.zip
+__pycache__/
+*.py[cod]

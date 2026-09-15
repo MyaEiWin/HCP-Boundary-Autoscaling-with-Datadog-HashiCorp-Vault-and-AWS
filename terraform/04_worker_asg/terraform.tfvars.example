@@ -6,4 +6,6 @@ worker_instance_profile_name = "boundary-autoscaling-lab-worker"
 # only later if you build a custom worker AMI.
 boundary_cluster_id          = "REPLACE-WITH-HCP-BOUNDARY-CLUSTER-ID"
 vault_addr                   = "https://YOUR-VAULT-ADDRESS"
+# HCP Vault Dedicated normally uses the admin namespace for this lab.
+vault_namespace               = "admin"
 allowed_client_cidrs         = ["YOUR.PUBLIC.IP.ADDRESS/32"]

@@ -33,6 +33,11 @@ variable "worker_ami_id" {
 }
 variable "boundary_cluster_id" { type = string }
 variable "vault_addr" { type = string }
+variable "vault_namespace" {
+  description = "HCP Vault namespace used for worker AWS IAM authentication."
+  type        = string
+  default     = "admin"
+}
 variable "vault_aws_role" {
   type    = string
   default = "boundary-worker"

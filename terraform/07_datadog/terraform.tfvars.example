@@ -1,0 +1,10 @@
+scale_out_notification = "@webhook-boundary-scale-out"
+scale_in_notification  = "@webhook-boundary-scale-in"
+
+aws_region           = "us-east-2"
+project_name         = "boundary-autoscaling-lab"
+asg_name             = "boundary-autoscaling-lab-workers"
+scale_out_policy_arn = "arn:aws:autoscaling:REGION:ACCOUNT:scalingPolicy:POLICY_ID:autoScalingGroupName/GROUP:policyName/boundary-autoscaling-lab-scale-out"
+scale_in_policy_arn  = "arn:aws:autoscaling:REGION:ACCOUNT:scalingPolicy:POLICY_ID:autoScalingGroupName/GROUP:policyName/boundary-autoscaling-lab-scale-in"
+vault_addr           = "https://YOUR-HCP-VAULT-PUBLIC-ENDPOINT:8200"
+vault_namespace      = "admin"

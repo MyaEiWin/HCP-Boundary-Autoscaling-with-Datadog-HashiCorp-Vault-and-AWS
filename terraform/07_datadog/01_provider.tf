@@ -3,3 +3,6 @@ provider "datadog" {
   api_url = var.datadog_api_url
 }
 
+provider "aws" {
+  region = var.aws_region
+}

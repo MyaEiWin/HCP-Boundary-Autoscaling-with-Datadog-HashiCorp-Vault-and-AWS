@@ -3,38 +3,100 @@
 This is a build-from-scratch, work-in-progress lab for scaling self-managed
 HCP Boundary workers from active-session demand. It uses Terraform to create an
 AWS SSH target, the worker Auto Scaling Group (ASG), IAM roles, Vault AWS IAM
-authentication, scaling-policy foundations, and Datadog monitor configuration.
+authentication, worker lifecycle automation, and Datadog-driven scale actions.
 
 The design is proven one integration at a time. The ASG launches workers; each
 new worker must authenticate to Vault, retrieve its uniquely scoped Boundary
 activation token, and register with HCP Boundary before it can carry sessions.
-Vault SSH certificate injection is the planned developer-to-target
-authentication method. Automatic worker-token creation, Datadog-to-ASG webhook
-actions, lifecycle deregistration, and end-to-end test evidence are still in
-progress.
+Vault SSH certificate injection is the developer-to-target authentication
+method. The repository includes worker-token creation, Datadog-to-ASG webhook
+actions, and lifecycle deregistration automation; these require real
+environment credentials and end-to-end validation before they can be claimed
+as proven.
 
-> This is a lab design, not a production deployment template. Use private networking, least-privilege policies, and a reviewed worker-registration design before production use.
+## Current project status
+
+This is an **unfinished, production-inspired proof of concept**. The
+repository contains the implementation for the intended flow, but the live
+HCP, AWS, Vault, and Datadog integrations still require validation.
+
+
+## Runnable implementation order
+
+The Terraform stage READMEs are the runnable source of truth. The milestone
+sections below explain the design and validation criteria.
+
+| Order | Directory | Purpose |
+| ---: | --- | --- |
+| 1 | [`terraform/01_target`](terraform/01_target) | Target VPC and EC2 SSH host. |
+| 2 | [`terraform/02_worker_iam`](terraform/02_worker_iam) | Worker and automation IAM roles. |
+| 3 | [`terraform/03_vault`](terraform/03_vault) | Vault AWS auth and SSH certificate injection. |
+| 4 | [`terraform/04_worker_asg`](terraform/04_worker_asg) | Worker launch template and ASG. |
+| 5 | [`terraform/05_scaling`](terraform/05_scaling) | ASG policies and lifecycle hooks. |
+| 6 | [`terraform/06_automation`](terraform/06_automation) | Session counter, token broker, and cleanup. |
+| 7 | [`terraform/07_datadog`](terraform/07_datadog) | Monitors, webhook receiver, and scale actions. |
+| 8 | [`load_testing`](load_testing) | Python and Locust validation. |
+
+
+## Implementation direction
+
+This project follows a production-inspired pattern, implemented in small
+stages. Each integration must be proven with the real HCP, AWS, Vault, and
+Datadog accounts before it is described as complete.
+
+```text
+1. Boundary SSH target works
+2. Vault SSH certificate injection works
+3. Worker bootstrap uses Vault AWS IAM auth
+4. Datadog receives an accurate active-session metric
+5. Datadog invokes protected ASG scale actions
+6. Lifecycle cleanup deregisters workers safely
+7. Private networking and production hardening
+```
 
 ## Target architecture
 
 ~~~text
 Scale out
-Load generator -> Boundary sessions -> Datadog metric/monitor -> scale action
-                                                        -> ASG -> EC2 worker
-                                                        -> Vault -> Boundary
+
+Load generator
+   -> Boundary sessions
+   -> Datadog metric
+   -> Datadog high-session monitor
+   -> webhook / scale-action receiver
+   -> ASG scale-out policy
+   -> ASG launches EC2 worker
+   -> worker authenticates to Vault with AWS IAM
+   -> worker retrieves its one-time Boundary activation token
+   -> worker registers with HCP Boundary
+   -> worker is ready to proxy sessions
 
 Scale in
-Datadog low-session monitor -> scale action -> ASG lifecycle hook
-                                              -> Terminating:Wait
-                                              -> cleanup -> Vault -> Boundary deregistration
-                                              -> CompleteLifecycleAction -> EC2 termination
+
+Datadog low-session monitor
+   -> webhook / scale-action receiver
+   -> ASG scale-in policy
+   -> selected worker enters Terminating:Wait
+   -> worker cleanup process
+   -> worker authenticates to Vault, if a deregistration credential is required
+   -> worker deregisters from HCP Boundary
+   -> CompleteLifecycleAction
+   -> EC2 termination
 ~~~
 
-## Developer access model
+`webhook / scale-action receiver` is implemented in Terraform Stage 07. It
+uses API Gateway, a Lambda function, and a Vault-held shared secret. Configure
+the Datadog webhooks only after Stage 07 is deployed.
 
-This project uses Vault SSH certificate injection for developer access. The SSH
-key configured by Terraform on the target EC2 instance is an administrator
-bootstrap/break-glass key only; do not share it with developers.
+## Developer access model — Vault secret injection
+
+Stage 03 contains the Vault SSH certificate injection implementation, but it
+must be validated against the real HCP Boundary target before it is claimed as
+working. The Vault implementation supports both developer SSH certificate
+injection and AWS IAM authentication for worker/bootstrap automation.
+
+The SSH key configured by Terraform on the target EC2 instance is an
+administrator bootstrap/break-glass key only; do not share it with developers.
 
 ~~~text
 Developer SSO identity
@@ -44,7 +106,8 @@ Developer SSO identity
 -> target EC2
 ~~~
 
-Developers do not receive the target’s private key or a shared target password.
+When this milestone is complete, developers will not receive the target's
+private key or a shared target password.
 
 ## Milestones
 
@@ -67,6 +130,9 @@ You need an HCP Boundary cluster, an HCP Vault cluster (or managed Vault deploym
 
 The initial AWS SSH target can be created from the included [Terraform configuration](terraform/README.md). Complete that foundation before starting Milestone 1.
 
+Both load generators are in [load_testing](load_testing/README.md). Run them
+only after a single Vault-injected Boundary SSH session succeeds.
+
 ~~~bash
 boundary version
 vault version
@@ -81,7 +147,7 @@ export AWS_PROFILE="aa-hellocloud"
 export AWS_REGION="us-east-1"
 export ASG_NAME="boundary-worker-asg"
 export BOUNDARY_ADDR="https://YOUR-BOUNDARY-ADDRESS"
-export BOUNDARY_TARGET_ID="ttcp_xxxxxxxxxx"
+export BOUNDARY_TARGET_ID="tssh_xxxxxxxxxx"
 export VAULT_ADDR="https://YOUR-VAULT-ADDRESS"
 export VAULT_AWS_ROLE="boundary-worker"
 ~~~
@@ -131,17 +197,108 @@ Close the connection and confirm the session disappears.
 
 ### 2a. Configure Vault SSH certificate injection
 
-Before giving developers access, configure Vault SSH certificate injection:
+Complete this milestone before describing Vault secret injection as proven. For
+this initial POC, use the HCP Vault **public endpoint** if it is reachable by
+both HCP Boundary and the assigned worker. Move to the private endpoint only
+after HCP HVN-to-AWS VPC connectivity, DNS, and routing are configured and
+verified.
 
-1. Enable Vault's SSH secrets engine and configure an SSH certificate-authority
-   signing role, for example `boundary-client`.
-2. Permit only the intended target Linux principal, such as `ubuntu`, and use a
+Set the Vault environment. HCP Vault Dedicated configuration is normally in
+the `admin` namespace:
+
+~~~bash
+export VAULT_ADDR="https://YOUR-VAULT-PUBLIC-ENDPOINT:8200"
+export VAULT_NAMESPACE="admin"
+vault status
+~~~
+
+Then complete these steps:
+
+1. Enable Vault's SSH secrets engine at a dedicated path, such as
+   `boundary-ssh/`, and generate its certificate-authority (CA) signing key.
+
+   ~~~bash
+   vault secrets enable -path=boundary-ssh ssh
+   vault write boundary-ssh/config/ca generate_signing_key=true
+   vault read -field=public_key boundary-ssh/config/ca > vault-ssh-ca.pub
+   ~~~
+
+2. Create an SSH signing role, for example `boundary-ubuntu`. Permit only the
+   intended target Linux principal, such as `ubuntu`, and use a
    short certificate TTL appropriate for the lab session length.
+
+   ~~~bash
+   vault write boundary-ssh/roles/boundary-ubuntu \
+     key_type=ca \
+     allow_user_certificates=true \
+     allowed_users=ubuntu \
+     default_user=ubuntu \
+     ttl=30m \
+     max_ttl=1h
+   ~~~
+
 3. Export the Vault SSH CA public key to the target and configure SSHD with
    `TrustedUserCAKeys`; restart SSH after validation.
-4. Create a narrowly scoped Vault credential store in HCP Boundary.
+
+   ~~~bash
+   scp -i ~/.ssh/boundary-lab vault-ssh-ca.pub \
+     ubuntu@"<TARGET_PUBLIC_IP>":/tmp/vault-ssh-ca.pub
+
+   ssh -i ~/.ssh/boundary-lab ubuntu@"<TARGET_PUBLIC_IP>"
+   sudo install -m 0644 /tmp/vault-ssh-ca.pub /etc/ssh/trusted-user-ca-keys.pem
+   sudoedit /etc/ssh/sshd_config
+   # Add: TrustedUserCAKeys /etc/ssh/trusted-user-ca-keys.pem
+   sudo sshd -t
+   sudo systemctl restart ssh
+   ~~~
+
+4. Create a limited policy and a renewable Vault token for the HCP Boundary
+   Vault credential store. Save this as
+   `boundary-credential-store.hcl`; it can request certificates only from the
+   intended signing role and manage its own token lease.
+
+   ~~~hcl
+   path "auth/token/lookup-self" {
+     capabilities = ["read"]
+   }
+
+   path "auth/token/renew-self" {
+     capabilities = ["update"]
+   }
+
+   path "auth/token/revoke-self" {
+     capabilities = ["update"]
+   }
+
+   path "sys/leases/renew" {
+     capabilities = ["update"]
+   }
+
+   path "sys/leases/revoke" {
+     capabilities = ["update"]
+   }
+
+   path "boundary-ssh/sign/boundary-ubuntu" {
+     capabilities = ["create", "update"]
+   }
+   ~~~
+
+   Apply the policy and create a periodic token. Keep the resulting token out
+   of Git and out of screenshots.
+
+   ~~~bash
+   vault policy write boundary-credential-store boundary-credential-store.hcl
+   vault token create \
+     -no-default-policy=true \
+     -policy=boundary-credential-store \
+     -orphan \
+     -period=24h
+   ~~~
+
 5. Create a Vault SSH certificate credential library pointing to the signing
-   path, for example `ssh-client-signer/sign/boundary-client`.
+   path `boundary-ssh/sign/boundary-ubuntu`. Use the periodic token from the
+   preceding step and an egress-worker filter that selects only workers able
+   to reach both Vault and the target.
 6. Create an SSH-type Boundary target and attach the library as an injected
    application credential.
 7. Give developer users/groups Boundary session authorization; do not give them
@@ -185,10 +342,10 @@ vault auth enable aws
 vault auth list
 ~~~
 
-For KV v2 mounted at secret, create a policy permitting only the worker secret path:
+For this implementation, the worker policy permits only registration paths:
 
 ~~~hcl
-path "secret/data/boundary/worker" {
+path "secret/data/boundary/registration/*" {
   capabilities = ["read"]
 }
 ~~~
@@ -212,15 +369,18 @@ Configure the AWS-auth verification settings required by your Vault deployment. 
 
 ### 5. Store only required registration material
 
-First select and document a supported Boundary registration flow. The approved secret may contain a registration value, worker configuration fragment, or reference to another short-lived credential. It must not contain a Vault root token or a long-lived Boundary administrator credential.
+This repository uses controller-led worker registration. The Stage 06 token
+broker creates one Boundary activation token for each ASG instance and writes
+it only to:
 
-After selecting the design, write only the required values:
-
-~~~bash
-vault kv put secret/boundary/worker \
-  boundary_addr="$BOUNDARY_ADDR" \
-  '<REGISTRATION_FIELD>=<VALUE_REQUIRED_BY_YOUR_DESIGN>'
+~~~text
+secret/boundary/registration/<instance-id>
 ~~~
+
+The worker retrieves that token with AWS IAM authentication during bootstrap.
+Do not create a generic `secret/boundary/worker` credential or store a Vault
+root token or long-lived Boundary administrator token in a worker-readable
+path.
 
 ### 6. Build one worker manually
 
@@ -237,7 +397,8 @@ On the instance, confirm IAM identity and Vault access:
 ~~~bash
 aws sts get-caller-identity
 vault login -method=aws -role="$VAULT_AWS_ROLE"
-vault kv get secret/boundary/worker
+# For an ASG worker, bootstrap reads:
+# secret/boundary/registration/<its-instance-id>
 ~~~
 
 Start the worker and check it from an authorized Boundary administration session:
@@ -572,6 +733,9 @@ Load -> Boundary sessions -> Datadog -> scale out -> ASG instance
 
 Load ends -> Datadog -> scale in -> Terminating:Wait -> cleanup
           -> Boundary deregistration -> CompleteLifecycleAction -> termination
+
+Developer -> Boundary authorization -> Vault SSH certificate injection
+          -> Boundary worker -> target SSH access without a shared private key
 ~~~
 
 Record the final registration choice, monitor queries, thresholds, cooldowns, policy locations, and operating runbook. That turns the lab into a repeatable implementation rather than a one-time demo.

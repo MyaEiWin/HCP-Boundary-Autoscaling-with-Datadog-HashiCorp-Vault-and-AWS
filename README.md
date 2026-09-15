@@ -14,11 +14,7 @@ actions, and lifecycle deregistration automation; these require real
 environment credentials and end-to-end validation before they can be claimed
 as proven.
 
-## Current project status
 
-This is an **unfinished, production-inspired proof of concept**. The
-repository contains the implementation for the intended flow, but the live
-HCP, AWS, Vault, and Datadog integrations still require validation.
 
 
 ## Runnable implementation order

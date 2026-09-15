@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export AWS_REGION="${region}"
+export VAULT_ADDR="${vault_addr}"
+
+# POC approach: install tools at boot. A later production design can pass a
+# prebuilt AMI through worker_ami_id and skip this startup installation.
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y ca-certificates curl gpg jq lsb-release awscli
+curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" >/etc/apt/sources.list.d/hashicorp.list
+apt-get update
+apt-get install -y boundary-enterprise vault
+for command in boundary vault aws jq; do command -v "$command" >/dev/null; done
+
+token=$(curl --fail --silent -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" http://169.254.169.254/latest/api/token)
+instance_id=$(curl --fail --silent -H "X-aws-ec2-metadata-token: $token" http://169.254.169.254/latest/meta-data/instance-id)
+public_ip=$(curl --fail --silent -H "X-aws-ec2-metadata-token: $token" http://169.254.169.254/latest/meta-data/public-ipv4)
+
+# The launch lifecycle hook may still be preparing this instance's secret.
+vault login -method=aws -role="${vault_aws_role}" >/dev/null
+for attempt in $(seq 1 60); do
+  if activation_token=$(vault kv get -field=activation_token "secret/boundary/registration/$instance_id" 2>/dev/null); then
+    break
+  fi
+  sleep 10
+done
+: "$${activation_token:?The token broker did not provide an activation token in time.}"
+
+install -d -o boundary -g boundary /opt/boundary/worker /run/boundary
+printf '%s' "$activation_token" >/run/boundary/activation-token
+chown boundary:boundary /run/boundary/activation-token
+chmod 0600 /run/boundary/activation-token
+
+cat >/etc/boundary.d/worker.hcl <<EOF
+hcp_boundary_cluster_id = "${boundary_cluster_id}"
+
+listener "tcp" {
+  purpose = "proxy"
+  address = "0.0.0.0"
+  port    = 9202
+}
+
+worker {
+  public_addr                         = "$public_ip"
+  auth_storage_path                   = "/opt/boundary/worker"
+  controller_generated_activation_token = "file:///run/boundary/activation-token"
+  tags { type = ["autoscaling"] }
+}
+EOF
+
+chown boundary:boundary /etc/boundary.d/worker.hcl
+chmod 0640 /etc/boundary.d/worker.hcl
+systemctl restart boundary

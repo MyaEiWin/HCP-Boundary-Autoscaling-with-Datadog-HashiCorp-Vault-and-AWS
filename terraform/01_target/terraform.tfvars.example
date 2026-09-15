@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars. This file is intentionally ignored by .gitignore.
+aws_region        = "us-east-2"
+project_name      = "boundary-autoscaling-lab"
+admin_public_key  = "ssh-ed25519 AAAA... replace-with-your-public-key"
+allowed_ssh_cidrs = ["YOUR.PUBLIC.IP.ADDRESS/32"]
+

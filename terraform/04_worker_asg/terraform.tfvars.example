@@ -1,0 +1,9 @@
+# The VPC, subnet, and target security group are read automatically from
+# ../01_target/terraform.tfstate. Do not set overrides unless needed.
+worker_instance_profile_name = "boundary-autoscaling-lab-worker"
+# No worker_ami_id is required for the POC. Terraform selects Ubuntu 24.04 and
+# user data installs Boundary Enterprise, Vault CLI, AWS CLI, and jq. Set this
+# only later if you build a custom worker AMI.
+boundary_cluster_id          = "REPLACE-WITH-HCP-BOUNDARY-CLUSTER-ID"
+vault_addr                   = "https://YOUR-VAULT-ADDRESS"
+allowed_client_cidrs         = ["YOUR.PUBLIC.IP.ADDRESS/32"]

@@ -1,0 +1,5 @@
+aws_region   = "us-east-2"
+project_name = "boundary-autoscaling-lab"
+# ASG name is read automatically from Stage 4 state.
+# Keep false until a token-broker Lambda is implemented.
+enable_launch_hook = false

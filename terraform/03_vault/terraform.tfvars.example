@@ -1,0 +1,3 @@
+worker_role_arn       = "arn:aws:iam::<ACCOUNT_ID>:role/boundary-autoscaling-lab-worker"
+token_broker_role_arn = "arn:aws:iam::<ACCOUNT_ID>:role/boundary-autoscaling-lab-token-broker"
+

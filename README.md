@@ -1,6 +1,17 @@
 # HCP Boundary Worker Autoscaling with Datadog, Vault, and AWS
 
-This is a build-from-scratch lab for scaling HCP Boundary workers from active-session demand. It proves one layer at a time. Do not create the Auto Scaling Group (ASG) until one manually created EC2 worker can authenticate to Vault and register with Boundary.
+This is a build-from-scratch, work-in-progress lab for scaling self-managed
+HCP Boundary workers from active-session demand. It uses Terraform to create an
+AWS SSH target, the worker Auto Scaling Group (ASG), IAM roles, Vault AWS IAM
+authentication, scaling-policy foundations, and Datadog monitor configuration.
+
+The design is proven one integration at a time. The ASG launches workers; each
+new worker must authenticate to Vault, retrieve its uniquely scoped Boundary
+activation token, and register with HCP Boundary before it can carry sessions.
+Vault SSH certificate injection is the planned developer-to-target
+authentication method. Automatic worker-token creation, Datadog-to-ASG webhook
+actions, lifecycle deregistration, and end-to-end test evidence are still in
+progress.
 
 > This is a lab design, not a production deployment template. Use private networking, least-privilege policies, and a reviewed worker-registration design before production use.
 
